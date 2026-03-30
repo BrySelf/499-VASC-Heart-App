@@ -1,6 +1,11 @@
-import org.opencv.core.Core;
-import org.opencv.core.Mat;
+import org.opencv.core.*;
+import org.opencv.highgui.HighGui;
+import org.opencv.objdetect.CascadeClassifier;
+import org.opencv.video.TrackerMIL;
 import org.opencv.videoio.VideoCapture;
+import org.opencv.videoio.Videoio;
+
+import java.util.ArrayList;
 
 public class VideoProcessor {
     //we have to use static blocks bc this is basically a C++ wrapper eugh
@@ -20,76 +25,80 @@ public class VideoProcessor {
      */
 
     static void main(String[] args) {
-        //later this will be a stored video taken directly from the
-        //camera, not a video we have already taken.
-        VideoCapture videoCap = new VideoCapture("placeholder/path.mp4");
-        Mat frame = new Mat();
+        //need to force DirectShow here
+        VideoCapture camera = new VideoCapture(0, Videoio.CAP_DSHOW);
 
-        if(!videoCap.isOpened()){
-            System.err.println("Could not open Video.");
+        if (!camera.isOpened()) {
+            System.out.println("Error: Camera could not be opened in Main.");
             return;
         }
+
+        Mat frame = new Mat();
+        System.out.println("Camera opened. Press ESC to close.");
 
         int noRows = frame.rows();
         int noCols = frame.cols();
         int noChannels = frame.channels(); //should be 3 for us
         /*
-        * i love how every docstring for functions is just whatever c++ function
-        * it's running, parameters included. like literally a line of code.
-        * for Mat.channels() it says "int Mat::channels()" its like oh ok yeah i
-        * didn't know that's what it did.
-        */
+         * i love how half of the docstrings for functions is just whatever c++ function
+         * it's running, parameters included. like literally a line of code.
+         * for Mat.channels() it says "int Mat::channels()" its like oh ok yeah i
+         * didn't know that's what it did.
+         */
         /*
-        * or alternatively if you go to the javadocs it my say something like this:
-        * "public int get(int row, int col, byte[] data)"
-        * and its like yeah OK that's the method signature cool but what does it DO??
-        * HOW does it do it?? are there any other things i should know about??
+         * or alternatively if you go to the javadocs it my say something like this:
+         * "public int get(int row, int col, double[] data)"
+         * and its like yeah OK that's the method signature cool but what does it DO??
+         * HOW does it do it?? are there any other things i should know about??
          */
 
-        /*
-        * kind of annoyingly we *have* to use a byte array here. we're essentially
-        * trying to mimic how c++ arrays work. if we don't we're asking for every
-        * pixel of every frame to have get() called on, which opencv will then perform
-        * transformations on in order to get it into a double[]. this is because Mat
-        * stores its data as raw bytes in off-heap memory. in addition, its more
-        * memory efficient. the double[] we would store in is 24 bytes per pixel
-        * for the same data we could store in a byte[] for 3 bytes a pixel. we do
-        * have to handle the fact that java bytes are signed by default but that just
-        * requires some bitwise operands and unsigned ints
-        */
-        byte[] data = new byte[noRows * noCols * noCols];
-        frame.get(0, 0, data);
+        ArrayList<double[]> values = new ArrayList<>();
 
-        for(int i = 0; i < data.length; i+= 3){
+        fifteenCapture(camera, frame, values);
 
-            /*
-            * 330 review:
-            * lets say we have unsigned byte x = 1000 0001, or in decimal terms, 129. but
-            * java interprets all bytes as signed by default (specifically using
-            * two's complement, go look back at your notes for more info if you need)
-            * so java would evaluate x = 1000 0001 as -127 in decimal.
-            *
-            * to remedy this we use bitwise AND (&) and converting to an integer.
-            * recall that & returns 1 for given bit if both input bits are 1, 0 otherwise.
-            * by calling & with 0xFF as our other input, we can handle the
-            * signed/unsigned gap between c++ and java.
-            *
-            * e.g.
-            * starting off lets say data[i] is 1000 0001.
-            * we assign it to int x. java performs sign extension when turning it into
-            * a 32-bit int, by filling everything to the left with the sign bit.
-            * so:
-            * x = 11111111 11111111 11111111 10000001
-            * 0xFF = 00000000 00000000 00000000 11111111
-            * x & 0xFF = 00000000 00000000 00000000 10000001
-            *
-            * now when reading x & 0xFF as an int, java will correctly understand its
-            * 129 and not -127. obviously we need this because BGR values are [0, 255]
-            * and not [-128, 127] like a two's complement byte.
-             */
-            int b = data[i] & 0xFF; //handle signed bytes
-            int g = data[i+1] & 0xFF;
-            int r = data[i+2] & 0xFF;
+        camera.release();
+
+        //annoyingly i *think* bc OpenCV is just c++ theres some issue with not
+        //properly terminating the process once the end of the main method is reached
+        //so i just solved it by force exiting.
+        System.exit(0);
+    }
+
+    public static void fifteenCapture(VideoCapture camera, Mat frame, ArrayList<double[]> values){
+        long startTime = 0;
+        long duration = 15000; //in ms
+        double[] data;
+
+        while (true) {
+            if (camera.read(frame) && !frame.empty()) {
+                //read and store values
+                data = meanPixelValue(frame);
+                values.add(data);
+                HighGui.imshow("Main Camera Feed", frame);
+            }
+
+            // waiting 30ms to render just incase
+            if (HighGui.waitKey(30) == 27) {
+                break;
+            }
+
+            //start timer
+            if(startTime <= 0){
+                startTime = System.currentTimeMillis();
+                System.out.println("Starting 15 second capture.");
+            }
+
+            if(System.currentTimeMillis() - startTime > duration){
+                System.out.println("End of 15 second capture.");
+                break;
+            }
         }
+        HighGui.destroyAllWindows();
+    }
+
+    public static double[] meanPixelValue(Mat frame){
+        //plot twist opencv already does this for us wooooooo
+        Scalar avg = Core.mean(frame);
+        return new double[]{avg.val[0], avg.val[1], avg.val[2]};
     }
 }

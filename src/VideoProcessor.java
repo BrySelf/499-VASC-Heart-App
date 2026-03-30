@@ -1,5 +1,6 @@
 import org.opencv.core.*;
 import org.opencv.highgui.HighGui;
+import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
 import org.opencv.video.TrackerMIL;
 import org.opencv.videoio.VideoCapture;
@@ -33,8 +34,15 @@ public class VideoProcessor {
             return;
         }
 
+        String haarXMLPath = "resources/haarcascade_frontalface_default.xml";
+        CascadeClassifier detector = new CascadeClassifier(haarXMLPath);
+        if(detector.empty()){
+            System.out.println("Error opening XML file.");
+            return;
+        }
+
         Mat frame = new Mat();
-        System.out.println("Camera opened. Press ESC to close.");
+        System.out.println("Camera opened.");
 
         int noRows = frame.rows();
         int noCols = frame.cols();
@@ -54,7 +62,7 @@ public class VideoProcessor {
 
         ArrayList<double[]> values = new ArrayList<>();
 
-        fifteenCapture(camera, frame, values);
+        fifteenCapture(camera, frame, values, detector);
 
         camera.release();
 
@@ -64,7 +72,7 @@ public class VideoProcessor {
         System.exit(0);
     }
 
-    public static void fifteenCapture(VideoCapture camera, Mat frame, ArrayList<double[]> values){
+    public static void fifteenCapture(VideoCapture camera, Mat frame, ArrayList<double[]> values, CascadeClassifier detector){
         long startTime = 0;
         long duration = 15000; //in ms
         double[] data;
@@ -74,6 +82,40 @@ public class VideoProcessor {
                 //read and store values
                 data = meanPixelValue(frame);
                 values.add(data);
+
+                MatOfRect faces = new MatOfRect();
+                detector.detectMultiScale(frame, faces);
+                //detection loop
+                for(Rect face : faces.toArray()){
+                    //defining our face rectangle
+                    Imgproc.rectangle(frame, face, new Scalar(255,255,255),1);
+
+                    Rect forehead = new Rect(
+                            face.x + (int)(face.width*0.3),
+                            face.y + (int)(face.height*0.1),
+                            (int)(face.width*0.4),
+                            (int)(face.height*0.15)
+                    );
+
+                    Rect leftCheek = new Rect(
+                            face.x + (int)(face.width*0.15),
+                            face.y + (int)(face.height*0.55),
+                            (int)(face.width*0.2),
+                            (int)(face.height*0.2)
+                    );
+
+                    Rect rightCheek = new Rect(
+                            face.x + (int)(face.width*0.65),
+                            face.y + (int)(face.height*0.55),
+                            (int)(face.width * 0.2),
+                            (int)(face.height * 0.2)
+                    );
+
+                    //draw rects
+                    Imgproc.rectangle(frame, forehead, new Scalar(0,255,0),2);
+                    Imgproc.rectangle(frame, leftCheek, new Scalar(0,255,0),2);
+                    Imgproc.rectangle(frame, rightCheek, new Scalar(0,255,0),2);
+                }
                 HighGui.imshow("Main Camera Feed", frame);
             }
 

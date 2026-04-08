@@ -2,7 +2,6 @@ import org.opencv.core.*;
 import org.opencv.highgui.HighGui;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
-import org.opencv.video.TrackerMIL;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
 
@@ -44,9 +43,6 @@ public class VideoProcessor {
         Mat frame = new Mat();
         System.out.println("Camera opened.");
 
-        int noRows = frame.rows();
-        int noCols = frame.cols();
-        int noChannels = frame.channels(); //should be 3 for us
         /*
          * i love how half of the docstrings for functions is just whatever c++ function
          * it's running, parameters included. like literally a line of code.
@@ -61,10 +57,18 @@ public class VideoProcessor {
          */
 
         ArrayList<double[]> values = new ArrayList<>();
+        long startTime = System.currentTimeMillis();
 
         fifteenCapture(camera, frame, values, detector);
 
         camera.release();
+
+        ArrayList<Double> cleanData = bandPassFilter(values);
+        for (Double val : cleanData) {
+            System.out.println(val);
+        }
+
+        calculateBPM()
 
         //annoyingly i *think* bc OpenCV is just c++ theres some issue with not
         //properly terminating the process once the end of the main method is reached
@@ -75,14 +79,9 @@ public class VideoProcessor {
     public static void fifteenCapture(VideoCapture camera, Mat frame, ArrayList<double[]> values, CascadeClassifier detector){
         long startTime = 0;
         long duration = 15000; //in ms
-        double[] data;
 
         while (true) {
             if (camera.read(frame) && !frame.empty()) {
-                //read and store values
-                data = meanPixelValue(frame);
-                values.add(data);
-
                 MatOfRect faces = new MatOfRect();
                 detector.detectMultiScale(frame, faces);
                 //detection loop
@@ -92,7 +91,7 @@ public class VideoProcessor {
 
                     Rect forehead = new Rect(
                             face.x + (int)(face.width*0.3),
-                            face.y + (int)(face.height*0.1),
+                            face.y + (int)(face.height*0.08),
                             (int)(face.width*0.4),
                             (int)(face.height*0.15)
                     );
@@ -112,9 +111,34 @@ public class VideoProcessor {
                     );
 
                     //draw rects
-                    Imgproc.rectangle(frame, forehead, new Scalar(0,255,0),2);
-                    Imgproc.rectangle(frame, leftCheek, new Scalar(0,255,0),2);
-                    Imgproc.rectangle(frame, rightCheek, new Scalar(0,255,0),2);
+                    Imgproc.rectangle(frame, forehead, new Scalar(0,255,0),1);
+                    Imgproc.rectangle(frame, leftCheek, new Scalar(0,255,0),1);
+                    Imgproc.rectangle(frame, rightCheek, new Scalar(0,255,0),1);
+
+                    //read and store values
+                    Mat foreheadData = new Mat(frame, forehead);
+                    Mat leftCheekData = new Mat(frame, leftCheek);
+                    Mat rightCheekData = new Mat(frame, rightCheek);
+
+                    double[] foreheadMPV = meanPixelValue(foreheadData);
+                    double[] leftCheekMPV = meanPixelValue(leftCheekData);
+                    double[] rightCheekMPV = meanPixelValue(rightCheekData);
+
+                    foreheadData.release();
+                    leftCheekData.release();
+                    rightCheekData.release();
+
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    double[] dataArray = new double[]{
+                            (double)elapsed,
+                            argMax(new double[]{
+                                    foreheadMPV[1], leftCheekMPV[1], rightCheekMPV[1]
+                            })
+                    };
+                    values.add(dataArray);
+
+//                    System.out.printf("Greens = [%f, %f, %f]%n",
+//                            dataArray[1], dataArray[2], dataArray[3]);
                 }
                 HighGui.imshow("Main Camera Feed", frame);
             }
@@ -142,5 +166,84 @@ public class VideoProcessor {
         //plot twist opencv already does this for us wooooooo
         Scalar avg = Core.mean(frame);
         return new double[]{avg.val[0], avg.val[1], avg.val[2]};
+    }
+
+    //simplified BandPass
+    public static ArrayList<Double> bandPassFilter(ArrayList<double[]> signalData){
+        ArrayList<Double> filteredSignal = new ArrayList<>();
+
+        /*
+        * so we need to block the super jittery fast signal (low pass) AND the super-slow
+        * drift (high-pass). that gives us the important stuff in the middle
+        */
+        int lowPassWindow = 5; //fps
+        int highPassWindow = 45; //fps
+
+        for(int i=highPassWindow; i < signalData.size(); i++){
+            double smallSum = 0;
+            for(int j=0; j < lowPassWindow; j++){
+                smallSum += signalData.get(i-j)[1];//grabbing average of last 5 frames
+            }
+            double fastAvg = smallSum / lowPassWindow;
+
+            double largeSum = 0;
+            for(int j = 0; j < highPassWindow; j++){
+                largeSum += signalData.get(i-j)[1];//avg of last 45 frames
+            }
+            double slowAvg = largeSum / highPassWindow;
+
+            //the actual filtering step
+            filteredSignal.add(fastAvg - slowAvg); //centers around 0
+        }
+        return filteredSignal;
+    }
+
+    //needed a max function
+    public static double argMax(double[] args){
+        double max = args[1];
+        for(int i = 1; i < args.length; i++){
+            if(args[i] > max){
+                max = args[i];
+            }
+        }
+        return max;
+    }
+
+    public static double calculateBPM(ArrayList<double[]> signal, double fps){
+        int dftSize = Core.getOptimalDFTSize(signal.size());
+
+        //even though our values have been 8-bit, we need 32-bit room for the math
+        Mat signalMat = new Mat(dftSize, 1, CvType.CV_32F, new Scalar(0));
+
+        Mat dftMat = new Mat();
+        //in order to accurately get the result, we need to return it as a complex number
+        Core.dft(signalMat, dftMat, Core.DFT_COMPLEX_OUTPUT);
+
+        //finding magnitude of each output
+        ArrayList<Mat> channels = new ArrayList<>();
+        Core.split(dftMat, channels);
+        Mat magnitude = new Mat();
+        Core.magnitude(channels.get(0), channels.get(1), magnitude);
+
+        double maxVal = 0;
+        double maxIdx = -1;
+
+        for(int i = 1; i < dftSize / 2; i++){
+            double frequency = (double) i * fps/dftSize;
+            if(frequency >= 0.7 && frequency <= 4.1){
+                double val = magnitude.get(i, 0)[0];
+                if(val > maxVal){
+                    maxVal = val;
+                    maxIdx = i;
+                }
+            }
+        }
+
+        signalMat.release(); //manually releasing for safety
+        dftMat.release();
+        magnitude.release();
+
+
+        return maxIdx * fps / dftSize;
     }
 }

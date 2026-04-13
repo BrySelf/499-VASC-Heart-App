@@ -1,5 +1,4 @@
 import org.opencv.core.*;
-import org.opencv.highgui.HighGui;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
 import org.opencv.videoio.VideoCapture;
@@ -8,6 +7,7 @@ import org.opencv.videoio.Videoio;
 import java.util.ArrayList;
 
 public class VideoProcessor {
+
     //we have to use static blocks bc this is basically a C++ wrapper eugh
     static {
         try{
@@ -25,8 +25,11 @@ public class VideoProcessor {
      */
 
     static void main(String[] args) {
-        //need to force DirectShow here
-        VideoCapture camera = new VideoCapture(0, Videoio.CAP_DSHOW);
+        String videoPath = "testVideos/testvideo01_BPM_90.mp4";
+        long startTime = System.currentTimeMillis();
+        VideoCapture camera = new VideoCapture(videoPath);
+
+        double fps = camera.get(Videoio.CAP_PROP_FPS);
 
         if (!camera.isOpened()) {
             System.out.println("Error: Camera could not be opened in Main.");
@@ -57,63 +60,63 @@ public class VideoProcessor {
          */
 
         ArrayList<double[]> values = new ArrayList<>();
-        long startTime = System.currentTimeMillis();
 
         fifteenCapture(camera, frame, values, detector);
 
         camera.release();
 
-        ArrayList<Double> cleanData = bandPassFilter(values);
-        for (Double val : cleanData) {
-            System.out.println(val);
-        }
+        System.out.println("Pre-BPF size: " + values.size());
 
-        calculateBPM()
+        ArrayList<Double> cleanData = bandPassFilter(values);
+//        for (double[] val : cleanData) {
+//            System.out.println(val);
+//        }
+
+        double heartRate = calculateBPM(cleanData, fps);
+        System.out.println("Heart Rate:" + heartRate);
+
+        System.out.println("Elapsed Time: " + (System.currentTimeMillis() - startTime));
 
         //annoyingly i *think* bc OpenCV is just c++ theres some issue with not
         //properly terminating the process once the end of the main method is reached
         //so i just solved it by force exiting.
         System.exit(0);
     }
-
     public static void fifteenCapture(VideoCapture camera, Mat frame, ArrayList<double[]> values, CascadeClassifier detector){
-        long startTime = 0;
-        long duration = 15000; //in ms
-
-        while (true) {
-            if (camera.read(frame) && !frame.empty()) {
+        while (camera.read(frame)) {
+            if (!frame.empty()) {
                 MatOfRect faces = new MatOfRect();
-                detector.detectMultiScale(frame, faces);
+                detector.detectMultiScale(frame, faces); // Only detect every 5th frame
                 //detection loop
-                for(Rect face : faces.toArray()){
+                for (Rect face : faces.toArray()) {
                     //defining our face rectangle
-                    Imgproc.rectangle(frame, face, new Scalar(255,255,255),1);
+                    Imgproc.rectangle(frame, face, new Scalar(255, 255, 255), 1);
 
                     Rect forehead = new Rect(
-                            face.x + (int)(face.width*0.3),
-                            face.y + (int)(face.height*0.08),
-                            (int)(face.width*0.4),
-                            (int)(face.height*0.15)
+                            face.x + (int) (face.width * 0.3),
+                            face.y + (int) (face.height * 0.08),
+                            (int) (face.width * 0.4),
+                            (int) (face.height * 0.15)
                     );
 
                     Rect leftCheek = new Rect(
-                            face.x + (int)(face.width*0.15),
-                            face.y + (int)(face.height*0.55),
-                            (int)(face.width*0.2),
-                            (int)(face.height*0.2)
+                            face.x + (int) (face.width * 0.15),
+                            face.y + (int) (face.height * 0.55),
+                            (int) (face.width * 0.2),
+                            (int) (face.height * 0.2)
                     );
 
                     Rect rightCheek = new Rect(
-                            face.x + (int)(face.width*0.65),
-                            face.y + (int)(face.height*0.55),
-                            (int)(face.width * 0.2),
-                            (int)(face.height * 0.2)
+                            face.x + (int) (face.width * 0.65),
+                            face.y + (int) (face.height * 0.55),
+                            (int) (face.width * 0.2),
+                            (int) (face.height * 0.2)
                     );
 
                     //draw rects
-                    Imgproc.rectangle(frame, forehead, new Scalar(0,255,0),1);
-                    Imgproc.rectangle(frame, leftCheek, new Scalar(0,255,0),1);
-                    Imgproc.rectangle(frame, rightCheek, new Scalar(0,255,0),1);
+                    Imgproc.rectangle(frame, forehead, new Scalar(0, 255, 0), 1);
+                    Imgproc.rectangle(frame, leftCheek, new Scalar(0, 255, 0), 1);
+                    Imgproc.rectangle(frame, rightCheek, new Scalar(0, 255, 0), 1);
 
                     //read and store values
                     Mat foreheadData = new Mat(frame, forehead);
@@ -127,39 +130,13 @@ public class VideoProcessor {
                     foreheadData.release();
                     leftCheekData.release();
                     rightCheekData.release();
-
-                    long elapsed = System.currentTimeMillis() - startTime;
-                    double[] dataArray = new double[]{
-                            (double)elapsed,
-                            argMax(new double[]{
-                                    foreheadMPV[1], leftCheekMPV[1], rightCheekMPV[1]
-                            })
-                    };
-                    values.add(dataArray);
-
-//                    System.out.printf("Greens = [%f, %f, %f]%n",
-//                            dataArray[1], dataArray[2], dataArray[3]);
+                    double redMPV = (foreheadMPV[2] + leftCheekMPV[2] + rightCheekMPV[2])/3.0;
+                    double greenMPV = (foreheadMPV[1] + leftCheekMPV[1] + rightCheekMPV[1])/3.0;
+                    double blueMPV = (foreheadMPV[0] + leftCheekMPV[0] + rightCheekMPV[0])/3.0;
+                    values.add(new double[]{blueMPV, greenMPV, redMPV});
                 }
-                HighGui.imshow("Main Camera Feed", frame);
-            }
-
-            // waiting 30ms to render just incase
-            if (HighGui.waitKey(30) == 27) {
-                break;
-            }
-
-            //start timer
-            if(startTime <= 0){
-                startTime = System.currentTimeMillis();
-                System.out.println("Starting 15 second capture.");
-            }
-
-            if(System.currentTimeMillis() - startTime > duration){
-                System.out.println("End of 15 second capture.");
-                break;
             }
         }
-        HighGui.destroyAllWindows();
     }
 
     public static double[] meanPixelValue(Mat frame){
@@ -180,41 +157,63 @@ public class VideoProcessor {
         int highPassWindow = 45; //fps
 
         for(int i=highPassWindow; i < signalData.size(); i++){
-            double smallSum = 0;
-            for(int j=0; j < lowPassWindow; j++){
-                smallSum += signalData.get(i-j)[1];//grabbing average of last 5 frames
-            }
-            double fastAvg = smallSum / lowPassWindow;
+            double[] fastAvg = getChannelAverages(signalData, i, lowPassWindow);
+            double[] slowAvg = getChannelAverages(signalData, i, highPassWindow);
 
-            double largeSum = 0;
-            for(int j = 0; j < highPassWindow; j++){
-                largeSum += signalData.get(i-j)[1];//avg of last 45 frames
-            }
-            double slowAvg = largeSum / highPassWindow;
+            double greenAC = fastAvg[1] - slowAvg[1];
+            double redAC   = fastAvg[2] - slowAvg[2];
 
-            //the actual filtering step
-            filteredSignal.add(fastAvg - slowAvg); //centers around 0
+            //green is really pulse heavy and blue and red are really noise heavy
+            //so we do Signal = 3*G - 2*R
+            double combinedPulse = (3.0 * greenAC) - (2.0 * redAC);
+
+            filteredSignal.add(combinedPulse); //centers around 0
         }
         return filteredSignal;
     }
 
-    //needed a max function
-    public static double argMax(double[] args){
-        double max = args[1];
-        for(int i = 1; i < args.length; i++){
-            if(args[i] > max){
-                max = args[i];
-            }
+    private static double[] getChannelAverages(ArrayList<double[]> data, int index, int window) {
+        double blueSum = 0, greenSum = 0, redSum = 0;
+        for (int j = 0; j < window; j++) {
+            double[] frame = data.get(index - j);
+            blueSum += frame[0];
+            greenSum += frame[1];
+            redSum += frame[2];
         }
-        return max;
+        return new double[]{blueSum / window, greenSum / window, redSum / window};
     }
 
-    public static double calculateBPM(ArrayList<double[]> signal, double fps){
-        int dftSize = Core.getOptimalDFTSize(signal.size());
+    public static double calculateBPM(ArrayList<Double> signal, double fps){
+        //calculate actual duration, we lose some frames due to BPF
+        System.out.println("Signal Size: " + signal.size());
+
+        int dftSize = 2048;
 
         //even though our values have been 8-bit, we need 32-bit room for the math
         Mat signalMat = new Mat(dftSize, 1, CvType.CV_32F, new Scalar(0));
 
+
+        //mean normalizing
+        double mean = 0;
+        for(double d : signal) mean += d;
+        mean /= signal.size();
+        float[] floatSignal = new float[signal.size()];
+        for(int i = 0; i < floatSignal.length; i++){
+            floatSignal[i] = (float)(signal.get(i) - mean);
+        }
+
+        //hamming window!!!
+        for (int i = 0; i < signal.size(); i++) {
+            //hamming Window formula
+            double multiplier = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (signal.size() - 1));
+            floatSignal[i] = (float) (floatSignal[i] * multiplier);
+        }
+
+        signalMat.put(0, 0, floatSignal);
+        for(int i = 0; i < floatSignal.length; i++){
+            floatSignal[i] = signal.get(i).floatValue();
+        }
+        signalMat.put(0,0, floatSignal);
         Mat dftMat = new Mat();
         //in order to accurately get the result, we need to return it as a complex number
         Core.dft(signalMat, dftMat, Core.DFT_COMPLEX_OUTPUT);
@@ -229,9 +228,10 @@ public class VideoProcessor {
         double maxIdx = -1;
 
         for(int i = 1; i < dftSize / 2; i++){
-            double frequency = (double) i * fps/dftSize;
-            if(frequency >= 0.7 && frequency <= 4.1){
+            double frequency = (double) i * fps / dftSize;
+            if(frequency >= 0.96 && frequency <= 1.9){
                 double val = magnitude.get(i, 0)[0];
+                System.out.println(i + "," + frequency + "," + val);
                 if(val > maxVal){
                     maxVal = val;
                     maxIdx = i;
@@ -239,11 +239,14 @@ public class VideoProcessor {
             }
         }
 
+        System.out.println("maxIdx: " + maxIdx);
+
         signalMat.release(); //manually releasing for safety
         dftMat.release();
         magnitude.release();
 
 
-        return maxIdx * fps / dftSize;
+        return ((maxIdx * fps) / dftSize) * 60;
     }
 }
+

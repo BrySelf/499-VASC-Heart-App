@@ -91,7 +91,7 @@ export default function CameraScreen({
               />
               <View style={styles.overlay}>
                 <Text style={styles.overlayText}>
-                  Place fingertip over rear camera and flash
+                  Center face in frame with good lighting
                 </Text>
               </View>
             </>
@@ -106,7 +106,10 @@ export default function CameraScreen({
           <ActivityIndicator size="large" />
         ) : (
           <TouchableOpacity style={styles.primaryButton} onPress={handleStartMeasurement}>
-            <Text style={styles.primaryButtonText}>Start Measurement</Text>
+            <View style={styles.buttonContent}>
+              <Text style={styles.buttonIcon}>▶</Text>
+              <Text style={styles.primaryButtonText}>Start Measurement</Text>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -133,15 +136,16 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     marginBottom: 16,
+    marginTop: 28,
   },
   cameraCard: {
-    height: 320,
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#141416',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+      flex: 1,
+      borderRadius: 20,
+      overflow: 'hidden',
+      backgroundColor: '#141416',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 16,
   },
   infoText: {
     color: '#d0d0d6',
@@ -172,11 +176,22 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: '#ff4a43',
-    minHeight: 46,
+    minHeight: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    color: '#fff',
+    fontSize: 18,
+    marginRight: 10,
+    fontWeight: '700',
   },
   primaryButtonText: {
     color: '#fff',

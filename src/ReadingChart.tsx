@@ -77,5 +77,6 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#8a8a95',
     fontSize: 16,
+    marginTop: 20,
   },
 });

@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">rppgKotlin</string>
+    <string name="bpm_label_text">BPM: --</string>
+</resources>

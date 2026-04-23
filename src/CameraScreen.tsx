@@ -1,312 +1,244 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  NativeModules,
-  SafeAreaView,
-  StyleSheet,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  SafeAreaView,
+  StyleSheet,
+  NativeModules,
+  Dimensions,
 } from 'react-native';
-import RNFS from 'react-native-fs';
-import {Camera, useCameraDevice} from 'react-native-vision-camera';
+import { Camera, useCameraDevice } from 'react-native-vision-camera';
 
-type Props = {
+const { OpenCVModule } = NativeModules;
+const { width } = Dimensions.get('window');
+
+interface CameraScreenProps {
   onBack: () => void;
   onMeasurementComplete: (bpm: number) => void;
-};
-
-const {OpenCVModule} = NativeModules;
+}
 
 export default function CameraScreen({
   onBack,
   onMeasurementComplete,
-}: Props) {
-  const device = useCameraDevice('back');
-  const cameraRef = useRef<Camera | null>(null);
-
-  const [hasPermission, setHasPermission] = useState(false);
-  const [permissionChecked, setPermissionChecked] = useState(false);
+}: CameraScreenProps) {
+  const device = useCameraDevice('front');
   const [isMeasuring, setIsMeasuring] = useState(false);
-  const [statusText, setStatusText] = useState('Ready to measure');
+  const [progress, setProgress] = useState(0);
+  const [statusText, setStatusText] = useState(
+    'Align your face and press start',
+  );
 
-  const measuringRef = useRef(false);
-  const frameCountRef = useRef(0);
+  // Wrapped in useCallback to prevent the "missing dependency" lint error
+  const handleFinalize = useCallback(async () => {
+    setStatusText('Analyzing signal...');
+    try {
+      // Calls the native FFT logic we put in Kotlin
+      const bpm = await OpenCVModule.getFinalBPM();
+      onMeasurementComplete(Math.round(bpm));
+    } catch (error) {
+      console.error('Finalize error:', error);
+      setStatusText('Measurement failed. Try again.');
+      setIsMeasuring(false);
+    }
+  }, [onMeasurementComplete]);
 
+  // Polling loop: Asks Kotlin "how many frames have you collected?"
   useEffect(() => {
-    const checkPermission = async () => {
-      try {
-        const status = Camera.getCameraPermissionStatus();
+    let interval: any;
 
-        if (status === 'granted') {
-          setHasPermission(true);
-          setPermissionChecked(true);
-          return;
+    if (isMeasuring) {
+      interval = setInterval(async () => {
+        try {
+          const status = await OpenCVModule.getStatus();
+          const currentProgress = status.frameCount / 900;
+          setProgress(currentProgress);
+
+          if (status.frameCount >= 900) {
+            clearInterval(interval);
+            handleFinalize();
+          }
+        } catch (error) {
+          console.error('Polling error:', error);
         }
+      }, 200);
+    }
 
-        const nextStatus = await Camera.requestCameraPermission();
-        setHasPermission(nextStatus === 'granted');
-        setPermissionChecked(true);
-      } catch (error) {
-        console.error('Permission error:', error);
-        setPermissionChecked(true);
-      }
-    };
+    return () => clearInterval(interval);
+  }, [isMeasuring, handleFinalize]);
 
-    checkPermission();
-  }, []);
-
-  const readFileAsBase64 = async (filePath: string): Promise<string> => {
-    return RNFS.readFile(filePath, 'base64');
+  const handleStartMeasurement = async () => {
+    try {
+      await OpenCVModule.startMeasurement();
+      setIsMeasuring(true);
+      setStatusText('Stay still... measuring');
+    } catch (error) {
+      console.error('Start error:', error);
+    }
   };
 
   const stopMeasurement = async () => {
-    measuringRef.current = false;
-    setIsMeasuring(false);
-    setStatusText('Ready to measure');
-
     try {
-      await OpenCVModule.resetMeasurement();
-    } catch (error) {
-      console.warn('Failed to reset measurement:', error);
-    }
-  };
-
-  const captureAndProcessFrame = async () => {
-    if (!measuringRef.current) {
-      return;
-    }
-
-    if (!cameraRef.current || !device) {
-      await stopMeasurement();
-      Alert.alert('Camera unavailable', 'Camera reference or device is missing.');
-      return;
-    }
-
-    try {
-      setStatusText(`Capturing frame ${frameCountRef.current + 1}...`);
-
-      const photo = await cameraRef.current.takePhoto({
-        flash: 'off',
-      });
-
-      if (!photo?.path) {
-        throw new Error('Photo path was not returned.');
-      }
-
-      const base64Image = await readFileAsBase64(photo.path);
-
-      frameCountRef.current += 1;
-      setStatusText(`Processing frame ${frameCountRef.current}...`);
-
-      const bpm = await OpenCVModule.processFrame(
-        base64Image,
-        Date.now(),
-        30,
-      );
-
-      if (typeof bpm === 'number' && !Number.isNaN(bpm)) {
-        measuringRef.current = false;
-        setIsMeasuring(false);
-        setStatusText(`Measurement complete: ${Math.round(bpm)} BPM`);
-        onMeasurementComplete(Math.round(bpm));
-        return;
-      }
-
-      setTimeout(() => {
-        captureAndProcessFrame().catch(error => {
-          console.error('Measurement loop error:', error);
-        });
-      }, 150);
-    } catch (error) {
-      console.error('Measurement error:', error);
-      await stopMeasurement();
-      Alert.alert('Measurement failed', 'Could not calculate heart rate.');
-    }
-  };
-
-  const handleStartMeasurement = async () => {
-    if (!hasPermission || device == null) {
-      Alert.alert('Camera unavailable', 'Camera permission or device is missing.');
-      return;
-    }
-
-    try {
-      await OpenCVModule.resetMeasurement();
-
-      frameCountRef.current = 0;
-      measuringRef.current = true;
-      setIsMeasuring(true);
-      setStatusText('Starting measurement...');
-
-      captureAndProcessFrame().catch(error => {
-        console.error('Initial capture error:', error);
-      });
-    } catch (error) {
-      console.error('Start measurement error:', error);
-      Alert.alert('Measurement failed', 'Could not start heart rate measurement.');
+      await OpenCVModule.stopMeasurement();
       setIsMeasuring(false);
-      measuringRef.current = false;
-      setStatusText('Ready to measure');
+      setProgress(0);
+      setStatusText('Measurement cancelled');
+    } catch (error) {
+      console.error('Stop error:', error);
     }
   };
+
+  if (!device)
+    return (
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.errorText}>No Camera Found</Text>
+      </SafeAreaView>
+    );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Measure Heart Rate</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.cameraContainer}>
+        <Camera
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={true}
+        />
 
-        <View style={styles.cameraCard}>
-          {!permissionChecked ? (
-            <Text style={styles.infoText}>Checking camera permission...</Text>
-          ) : !hasPermission ? (
-            <Text style={styles.infoText}>Camera permission denied.</Text>
-          ) : device == null ? (
-            <Text style={styles.infoText}>No back camera found.</Text>
-          ) : (
-            <>
-              <Camera
-                ref={cameraRef}
-                style={StyleSheet.absoluteFill}
-                device={device}
-                isActive={true}
-                photo={true}
-              />
-              <View style={styles.overlay}>
-                <Text style={styles.overlayText}>
-                  Center face in frame with good lighting
-                </Text>
+        <View style={styles.overlay}>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusText}>{statusText}</Text>
+          </View>
+
+          {isMeasuring && (
+            <View style={styles.progressWrapper}>
+              <View style={styles.progressBarBg}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${Math.min(progress * 100, 100)}%` },
+                  ]}
+                />
               </View>
-            </>
+              <Text style={styles.percentageText}>
+                {Math.round(progress * 100)}%
+              </Text>
+            </View>
           )}
         </View>
+      </View>
 
-        <Text style={styles.subtitle}>{statusText}</Text>
-
-        {isMeasuring ? (
+      <View style={styles.controls}>
+        {!isMeasuring ? (
           <>
-            <ActivityIndicator size="large" />
-            <TouchableOpacity style={styles.stopButton} onPress={stopMeasurement}>
-              <Text style={styles.stopButtonText}>Stop Measurement</Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleStartMeasurement}
+            >
+              <Text style={styles.buttonText}>Start Measurement</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.backButton} onPress={onBack}>
+              <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
           </>
         ) : (
-          <TouchableOpacity style={styles.primaryButton} onPress={handleStartMeasurement}>
-            <View style={styles.buttonContent}>
-              <Text style={styles.buttonIcon}>▶</Text>
-              <Text style={styles.primaryButtonText}>Start Measurement</Text>
-            </View>
+          <TouchableOpacity style={styles.stopButton} onPress={stopMeasurement}>
+            <Text style={styles.buttonText}>Cancel</Text>
           </TouchableOpacity>
         )}
-
-        <TouchableOpacity style={styles.secondaryButton} onPress={onBack}>
-          <Text style={styles.secondaryButtonText}>Back</Text>
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
   container: {
     flex: 1,
-    backgroundColor: '#050505',
-    padding: 20,
+    backgroundColor: '#000',
   },
-  title: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 16,
-    marginTop: 28,
-  },
-  cameraCard: {
+  cameraContainer: {
     flex: 1,
-    borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#141416',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  infoText: {
-    color: '#d0d0d6',
-    fontSize: 16,
-    textAlign: 'center',
-    paddingHorizontal: 20,
+    borderRadius: 20,
+    margin: 10,
+    backgroundColor: '#111',
   },
   overlay: {
     position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 12,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'space-between',
+    padding: 20,
+    alignItems: 'center',
+  },
+  statusBadge: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 20,
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 30,
+    marginTop: 20,
   },
-  overlayText: {
+  statusText: {
     color: '#fff',
-    textAlign: 'center',
-    fontSize: 13,
-  },
-  subtitle: {
-    color: '#cfcfd3',
     fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 20,
+  },
+  progressWrapper: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  progressBarBg: {
+    width: width * 0.8,
+    height: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#00FF88', // Nice health-focused green
+  },
+  percentageText: {
+    color: '#fff',
+    marginTop: 8,
+    fontWeight: 'bold',
+  },
+  controls: {
+    padding: 20,
+    paddingBottom: 40,
   },
   primaryButton: {
-    backgroundColor: '#ff4a43',
-    minHeight: 48,
-    borderRadius: 24,
+    backgroundColor: '#007AFF',
+    padding: 18,
+    borderRadius: 15,
     alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 12,
   },
   stopButton: {
-    backgroundColor: '#333',
-    minHeight: 48,
-    borderRadius: 24,
+    backgroundColor: '#FF3B30',
+    padding: 18,
+    borderRadius: 15,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    marginBottom: 12,
   },
-  stopButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  buttonContent: {
-    flexDirection: 'row',
+  backButton: {
+    padding: 15,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  buttonIcon: {
+  buttonText: {
     color: '#fff',
     fontSize: 18,
-    marginRight: 10,
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
-  primaryButtonText: {
-    color: '#fff',
+  backButtonText: {
+    color: '#999',
     fontSize: 16,
-    fontWeight: '700',
   },
-  secondaryButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 40,
-  },
-  secondaryButtonText: {
-    color: '#b88cff',
-    fontSize: 15,
-    fontWeight: '600',
+  errorText: {
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 50,
   },
 });

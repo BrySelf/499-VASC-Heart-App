@@ -1,13 +1,30 @@
-import React, {useState} from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardScreen from './src/Dashboard';
 import CameraScreen from './src/CameraScreen';
 import ReviewReadingScreen from './src/ReviewReadingScreen';
+import { NativeModules, Alert } from 'react-native';
+
+const { OpenCVModule } = NativeModules
 
 type Screen = 'dashboard' | 'camera' | 'review';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [measuredBpm, setMeasuredBpm] = useState<number | null>(null);
+
+  useEffect(() => {
+      const initProcessor = async () => {
+          try{
+              await OpenCVModule.initialize();
+              console.log("rPPG Engine Initialized Successfully");
+          }catch(e){
+              console.error(e);
+              Alert.alert("Error", "Could not initialize HR engine");
+          }
+      };
+
+      initProcessor();
+  }, []);
 
   if (screen === 'camera') {
     return (

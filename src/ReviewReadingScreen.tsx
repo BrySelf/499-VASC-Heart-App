@@ -57,7 +57,10 @@ export default function ReviewReadingScreen({bpm, onBack, onSaved}: Props) {
 
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Measured BPM</Text>
-          <Text style={styles.bpmValue}>{bpm} BPM</Text>
+          <View style={styles.bpmRow}>
+             <Text style={styles.bpmValue}>{bpm}</Text>
+             <Text style={styles.bpmUnit}> BPM</Text>
+          </View>
 
           <Text style={styles.sectionLabel}>Activity</Text>
           <View style={styles.activityContainer}>
@@ -92,7 +95,10 @@ export default function ReviewReadingScreen({bpm, onBack, onSaved}: Props) {
         </View>
 
         <TouchableOpacity style={styles.primaryButton} onPress={handleSave}>
-          <Text style={styles.primaryButtonText}>Save Reading</Text>
+          <View style={styles.buttonContent}>
+            <Text style={styles.buttonIcon}>✓</Text>
+            <Text style={styles.primaryButtonText}>Save Reading</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.secondaryButton} onPress={onBack}>
@@ -118,6 +124,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     marginBottom: 16,
+    marginTop: 28,
   },
   card: {
     backgroundColor: '#141416',
@@ -131,11 +138,23 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 8,
   },
+  bpmRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 8,
+  },
   bpmValue: {
     color: '#ff4a43',
-    fontSize: 34,
+    fontSize: 48,
     fontWeight: '800',
-    marginBottom: 8,
+    fontFamily: 'DMMono-Medium',
+  },
+  bpmUnit: {
+    color: '#ff4a43',
+    fontSize: 20,
+    fontWeight: '600',
+    fontFamily: 'DMMono-Regular',
+    marginLeft: 4,
   },
   activityContainer: {
     flexDirection: 'row',
@@ -170,11 +189,22 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: '#ff4a43',
-    minHeight: 46,
+    minHeight: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    color: '#fff',
+    fontSize: 20,
+    marginRight: 8,
+    fontWeight: '700',
   },
   primaryButtonText: {
     color: '#fff',

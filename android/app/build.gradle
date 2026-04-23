@@ -117,4 +117,6 @@ dependencies {
         implementation jscFlavor
     }
     implementation project(':opencv')
+    implementation "com.google.mediapipe:tasks-vision:latest.release"
+    implementation "com.github.wendykierp:JTransforms:3.1"
 }

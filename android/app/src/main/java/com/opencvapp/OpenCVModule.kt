@@ -7,6 +7,8 @@ import java.util.Collections
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.sqrt
+import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
+import com.google.mediapipe.framework.image.BitmapImageBuilder
 
 class OpenCVModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 

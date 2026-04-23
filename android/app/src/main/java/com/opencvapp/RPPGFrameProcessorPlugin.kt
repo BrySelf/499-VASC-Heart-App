@@ -1,58 +1,53 @@
 package com.opencvapp
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Matrix
-import android.graphics.Paint
-import com.facebook.react.bridge.Arguments
+import android.graphics.*
+import android.media.Image
 import com.mrousavy.camera.frameprocessors.Frame
 import com.mrousavy.camera.frameprocessors.FrameProcessorPlugin
 import com.mrousavy.camera.frameprocessors.VisionCameraProxy
 import com.google.mediapipe.framework.image.BitmapImageBuilder
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 
 class RPPGFrameProcessorPlugin(proxy: VisionCameraProxy, options: Map<String, Any>?) : FrameProcessorPlugin() {
 
     override fun callback(frame: Frame, params: Map<String, Any>?): Any? {
-        // 1. Get our Module instance to access the shared buffer and state
         val module = OpenCVModule.getInstance() ?: return null
-
-        // 2. Only process if the user has toggled "Start" in the React Native UI
         if (!module.isMeasuring) return null
 
         try {
-            // 3. Convert the Camera Frame to a Bitmap for OpenCV/MediaPipe processing
-            // Vision Camera frames are usually rotated; we need to fix orientation
-            val bitmap = frame.toBitmap() ?: return null
+            // 1. Convert Frame to Bitmap
+            val bitmap = toBitmap(frame) ?: return null
 
-            // 4. Run Face Detection (MediaPipe)
+            // 2. Run Face Detection
             val image = BitmapImageBuilder(bitmap).build()
             val detectionResult = module.faceLandmarker.detect(image)
 
             if (detectionResult.faceLandmarks().isNotEmpty()) {
-                // 5. Detect ROI (Forehead/Cheeks) using your ROIDetector
+                // 3. Get ROI Mask (Forehead/Cheeks)
                 val mask = module.roiDetector.process(bitmap, detectionResult)
 
                 if (mask != null) {
-                    // 6. Extract the Average Green value from the ROI
+                    // 4. Extract Green Average
                     val rawGreen = module.extractGreenAverage(bitmap, mask)
 
-                    // 7. Apply your SOS Filter to clean the signal in real-time
+                    // 5. Apply SOS Filter (Clean the pulse signal)
                     val filteredGreen = module.liveSosFilter.process(rawGreen)
 
-                    // 8. Push the clean data point into the 900-frame buffer
+                    // 6. Push to Buffer
                     module.processFrameData(filteredGreen)
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("RPPGPlugin", "Frame processing failed: ${e.message}")
+            android.util.Log.e("RPPGPlugin", "Processing error: ${e.message}")
         }
 
-        return null // We return null because JS doesn't need this data frame-by-frame
+        return null
     }
 
     /**
-     * Extension helper to convert Vision Camera Frame to Android Bitmap
+     * Converts a Vision Camera Frame (YUV_420_888) to an Android Bitmap.
+     * Handles rotation and format conversion.
      */
     private fun toBitmap(frame: Frame): Bitmap? {
         val image: Image = frame.image ?: return null

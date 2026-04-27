@@ -133,16 +133,18 @@ export default function CameraScreen({
     }
 
     try {
-      await OpenCVModule.resetMeasurement();
+      //Logic that needs to be fixed in the final app version later whoops!
+      // await OpenCVModule.resetMeasurement();
 
-      frameCountRef.current = 0;
-      measuringRef.current = true;
+      // frameCountRef.current = 0;
+      // measuringRef.current = true;
+      // setIsMeasuring(true);
+      // setStatusText('Starting measurement...');
+
       setIsMeasuring(true);
-      setStatusText('Starting measurement...');
-
-      captureAndProcessFrame().catch(error => {
-        console.error('Initial capture error:', error);
-      });
+      // Simulated BPM value to properly demonstrate all screens of the UI for now.
+      const simulatedBpm = 78;
+      onMeasurementComplete(simulatedBpm);
     } catch (error) {
       console.error('Start measurement error:', error);
       Alert.alert('Measurement failed', 'Could not start heart rate measurement.');

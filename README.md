@@ -21,3 +21,9 @@ If sync fails attempt a gradle clean by running "./gradlew clean" in the android
 Ensure you have an android emulator running, or have your device connected to android studio.
 Split your terminal and from the project root, run "npx react-native start" in one terminal and "npx react-native run-android" in the other.
 The app should launch on your emulator/device.
+
+
+
+***LIGHTING AND SUBJECT STILLNESS***
+Accurate photoplethysmography (PPG) detection is highly dependent on consistent lighting and a still subject. The camera-based heart rate algorithm works by detecting subtle color changes in facial skin caused by blood flow, and creating a usable signal from changes that are only perceptible at the pixel level. Poor or fluctuating lighting (e.g. flickering fluorescents, backlighting, or shadows) introduces noise that can mask or mimic these signals that we are trying to see.
+Similarly, subject movement causes motion artifacts that are often orders of magnitude larger than the PPG signal itself. Even minor head shifts or facial movements can corrupt the detection window. For best results, ensure the subject is in a well-lit, evenly illuminated environment, Natural or diffuse indoor light works best. Ensure they remain as still as possible during measurement. Band pass filtering helps, but cannot fully compensate for poor capture conditions.

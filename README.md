@@ -1,4 +1,4 @@
-#Python Backend for VASC Heart App
+# Python Backend for VASC Heart App
 ***INSTALL REQUIREMENTS***
 Ensure you install requirements listed in the requirements.txt file. (Use a virtual environment for best results)
 Run this command in your terminal:

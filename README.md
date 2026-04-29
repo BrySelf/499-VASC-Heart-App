@@ -22,8 +22,6 @@ Ensure you have an android emulator running, or have your device connected to an
 Split your terminal and from the project root, run "npx react-native start" in one terminal and "npx react-native run-android" in the other.
 The app should launch on your emulator/device.
 
-
-
 ***LIGHTING AND SUBJECT STILLNESS***
 Accurate photoplethysmography (PPG) detection is highly dependent on consistent lighting and a still subject. The camera-based heart rate
 algorithm works by detecting subtle color changes in facial skin caused by blood flow, and creating a usable signal from changes that are
@@ -34,10 +32,8 @@ shifts or facial movements can corrupt the detection window. For best results, e
 environment, Natural or diffuse indoor light works best. Ensure they remain as still as possible during measurement.
 Band pass filtering helps, but cannot fully compensate for poor capture conditions.
 
-
 ***NOT A MEDICAL DEVICE***
 This device is for research and educational purposes only. This product is not intended to treat, cure, or diagnose, any disease or ailment. 
-
 
 ***THIS APP IN ITS CURRENT FORM IS ONLY A DEMO***
 This application is moreso just a showcase of the UI created, with backend logic being mostly packaged seperately in a Python program.
